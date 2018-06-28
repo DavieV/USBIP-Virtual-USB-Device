@@ -55,14 +55,20 @@ WORD wVersionRequested = 2;
 WSADATA wsaData;
 #endif
 
+void set_op_rep_devlist_header(word version, word command, int status,
+                               int numExportedDevices,
+                               OP_REP_DEVLIST_HEADER *header) {
+  header->version = version;
+  header->command = command;
+  header->status = status;
+  header->numExportedDevices = numExportedDevices;
+}
+
 void handle_device_list(const USB_DEVICE_DESCRIPTOR *dev_dsc, OP_REP_DEVLIST *list)
 {
   CONFIG_GEN * conf= (CONFIG_GEN *)configuration;   
   int i;
-  list->header.version=htons(273);
-  list->header.command=htons(5);
-  list->header.status=0;
-  list->header.nExportedDevice=htonl(1);
+  set_op_rep_devlist_header(htons(273), htons(5), 0, htonl(1), &list->header);
   memset(list->device.usbPath,0,256);
   strcpy(list->device.usbPath,"/sys/devices/pci0000:00/0000:00:01.2/usb1/1-1");
   memset(list->device.busID,0,32);
@@ -87,7 +93,7 @@ void handle_device_list(const USB_DEVICE_DESCRIPTOR *dev_dsc, OP_REP_DEVLIST *li
     list->interfaces[i].bInterfaceProtocol=interfaces[i]->bInterfaceProtocol;
     list->interfaces[i].padding=0;
   }
-};
+}
 
 void handle_attach(const USB_DEVICE_DESCRIPTOR *dev_dsc, OP_REP_IMPORT *rep)
 {

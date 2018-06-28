@@ -64,7 +64,7 @@ typedef struct __attribute__((__packed__)) _OP_REP_DEVLIST_HEADER {
   word version;
   word command;
   int status;
-  int nExportedDevice;
+  int numExportedDevices;
 } OP_REP_DEVLIST_HEADER;
 
 //================= for each device
@@ -197,6 +197,11 @@ typedef struct __attribute__((__packed__)) _StandardDeviceRequest {
   byte wIndex1;
   word wLength;
 } StandardDeviceRequest;
+
+// Utility functions
+void set_op_rep_devlist_header(word version, word command, int status,
+                               int numExportedDevices,
+                               OP_REP_DEVLIST_HEADER *header);
 
 void send_usb_req(int sockfd, USBIP_RET_SUBMIT *usb_req, char *data,
                   unsigned int size, unsigned int status);
