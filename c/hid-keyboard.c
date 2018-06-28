@@ -23,11 +23,13 @@
    For e-mail suggestions :  lcgamboa@yahoo.com
    ######################################################################## */
 
+#include "usbip.h"
+#include "device_descriptors.h"
+
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include "usbip.h"
 
 /* Device Descriptor */
 const USB_DEVICE_DESCRIPTOR dev_dsc=

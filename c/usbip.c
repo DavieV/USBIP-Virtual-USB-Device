@@ -27,6 +27,7 @@
 
 
 #include"usbip.h"
+#include "device_descriptors.h"
 
 
 #ifdef _DEBUG
