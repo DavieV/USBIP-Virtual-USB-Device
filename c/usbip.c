@@ -31,26 +31,22 @@
 
 
 #ifdef _DEBUG
-void print_recv(char* buff,int size,const char* desc)
-{
-    int i,j;
-    
-    printf("----------recv  %s (%i)-----------\n",desc,size);
-            
-    j=1;
-    for(i=0; i< size; i++)
-    {
-        printf("0x%02X ",(unsigned char)buff[i]);
-        if(j > 7)
-        {
-           printf("\n"); 
-           j=0; 
-        };
-        j++;
-    }
-           
-          
-    printf("\n-------------------------\n");    
+void print_recv(char *buff, int size, const char *desc) {
+  int i, j;
+
+  printf("----------recv  %s (%i)-----------\n", desc, size);
+
+  j = 1;
+  for (i = 0; i < size; i++) {
+    printf("0x%02X ", (unsigned char)buff[i]);
+    if (j > 7) {
+      printf("\n");
+      j = 0;
+    };
+    j++;
+  }
+
+  printf("\n-------------------------\n");
 }
 #endif
 
