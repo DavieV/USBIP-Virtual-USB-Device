@@ -200,46 +200,48 @@ void send_usb_req(int sockfd, USBIP_RET_SUBMIT *usb_req, char *data,
   }
 }
 
-int handle_get_descriptor(int sockfd, StandardDeviceRequest * control_req, USBIP_RET_SUBMIT *usb_req)
-{
-  int handled = 0;
-  printf("handle_get_descriptor %u [%u]\n",control_req->wValue1,control_req->wValue0 );
-  if(control_req->wValue1 == 0x1) // Device
-  {
-    printf("Device\n");  
-    handled = 1;
-    send_usb_req(sockfd,usb_req, (char *)&dev_dsc, sizeof(USB_DEVICE_DESCRIPTOR)/*control_req->wLength*/, 0);
-   } 
-   if(control_req->wValue1 == 0x2) // configuration
-   {
-     printf("Configuration\n");  
-     handled = 1;
-     send_usb_req(sockfd,usb_req, (char *) configuration, control_req->wLength ,0);
-   }
-   if(control_req->wValue1 == 0x3) // string
-   {
-     char str[255];
-     int i;
-     memset(str,0,255); 
-     for(i=0;i< (*strings[control_req->wValue0]/2) -1;i++)
-        str[i]=strings[control_req->wValue0][i*2+2];
-     printf("String (%s)\n",str);  
-     handled = 1;
-     send_usb_req(sockfd,usb_req, (char *) strings[control_req->wValue0] ,*strings[control_req->wValue0]  ,0);
-   }
-   if(control_req->wValue1 == 0x6) // qualifier
-   {
-     printf("Qualifier\n");  
-     handled = 1;
-     send_usb_req(sockfd,usb_req, (char *) &dev_qua , control_req->wLength ,0);
-   }
-   if(control_req->wValue1 == 0xA) // config status ???
-   {
-     printf("Unknow\n");  
-     handled = 1;
-     send_usb_req(sockfd,usb_req,"",0,1);        
-   }  
-   return handled;
+int handle_get_descriptor(int sockfd, StandardDeviceRequest *control_req,
+                          USBIP_RET_SUBMIT *usb_req) {
+  printf("handle_get_descriptor %u [%u]\n", control_req->wValue1,
+         control_req->wValue0);
+
+  switch (control_req->wValue1) {
+    case USB_DESCRIPTOR_DEVICE:
+      printf("Device\n");
+      send_usb_req(sockfd, usb_req, (char *)&dev_dsc, control_req->wLength, 0);
+      break;
+    case USB_DESCRIPTOR_CONFIGURATION:
+      printf("Configuration\n");
+      send_usb_req(sockfd, usb_req, (char *)configuration, control_req->wLength,
+                   0);
+      break;
+    case USB_DESCRIPTOR_STRING:
+    {
+      // TODO(daviev): Look into moving this string construction into a
+      // function. It's a little ugly to have to create a separate scope just to
+      // declare |str|.
+      char str[255];
+      memset(str, 0, 255);
+      for (int i = 0; i < (*strings[control_req->wValue0] / 2) - 1; i++) {
+        str[i] = strings[control_req->wValue0][i * 2 + 2];
+      }
+      printf("String (%s)\n", str);
+      send_usb_req(sockfd, usb_req, (char *)strings[control_req->wValue0],
+                   *strings[control_req->wValue0], 0);
+      break;
+    }
+    case USB_DESCRIPTOR_DEVICE_QUALIFIER:
+      printf("Qualifier\n");
+      send_usb_req(sockfd, usb_req, (char *)&dev_qua, control_req->wLength, 0);
+    case 0x0A:
+      printf("Unknown\n");
+      send_usb_req(sockfd, usb_req, "", 0, 1);
+      break;
+    default:
+      return 0;
+  }
+
+  return 1;
 }
 
 int handle_set_configuration(int sockfd, StandardDeviceRequest * control_req, USBIP_RET_SUBMIT *usb_req)
