@@ -29,6 +29,8 @@
 #include"usbip.h"
 #include "device_descriptors.h"
 
+const char kUsbPath[] = "/sys/devices/pci0000:00/0000:00:01.2/usb1/1-1";
+const char kBusId[] = "1-1";
 
 #ifdef _DEBUG
 void print_recv(char *buff, int size, const char *desc) {
@@ -55,21 +57,36 @@ WORD wVersionRequested = 2;
 WSADATA wsaData;
 #endif
 
-// Sets the OP_REP_DEVLIST_HEADER |header| using the given values.
-void set_op_rep_devlist_header(word version, word command, int status,
-                               int numExportedDevices,
-                               OP_REP_DEVLIST_HEADER *header) {
+// Sets the OP_HEADER |header| using the given values.
+void set_op_header(word version, word command, int status, OP_HEADER *header) {
   header->version = version;
   header->command = command;
   header->status = status;
-  header->numExportedDevices = numExportedDevices;
 }
 
-// Sets the OP_REP_DEVLIST_DEVICE |device| using the corresponding values in
+// Sets the OP_REP_DEVLIST_HEADER |devlist_header| using the given values.
+void set_op_rep_devlist_header(word version, word command, int status,
+                               int numExportedDevices,
+                               OP_REP_DEVLIST_HEADER *devlist_header) {
+  set_op_header(version, command, status, &devlist_header->header);
+  devlist_header->numExportedDevices = numExportedDevices;
+}
+
+// Sets the OP_REP_DEVICE |device| using the corresponding values in
 // |dev_dsc| and |config|.
-void set_op_rep_devlist_device(const USB_DEVICE_DESCRIPTOR *dev_dsc,
-                               const USB_CONFIGURATION_DESCRIPTOR *config,
-                               OP_REP_DEVLIST_DEVICE *device) {
+void set_op_rep_device(const USB_DEVICE_DESCRIPTOR *dev_dsc,
+                       const USB_CONFIGURATION_DESCRIPTOR *config,
+                       OP_REP_DEVICE *device) {
+  // Set constants.
+  memset(device->usbPath, 0, 256);
+  strcpy(device->usbPath, kUsbPath);
+  memset(device->busID, 0, 32);
+  strcpy(device->busID, kBusId);
+
+  device->busnum=htonl(1);
+  device->devnum=htonl(2);
+  device->speed=htonl(2);
+
   // Set values using |dev_dsc|.
   device->idVendor = htons(dev_dsc->idVendor);
   device->idProduct = htons(dev_dsc->idProduct);
@@ -97,49 +114,25 @@ void set_op_rep_devlist_interfaces(const USB_INTERFACE_DESCRIPTOR *interfaces[],
   }
 }
 
-// Populates |list| using the USB device descriptor |dev_dsc| that we wish to
-// report.
+// Creates the OP_REP_DEVLIST message used to respond to a request to list the
+// host's exported USB devices.
 void handle_device_list(const USB_DEVICE_DESCRIPTOR *dev_dsc,
                         const USB_CONFIGURATION_DESCRIPTOR *config,
                         const USB_INTERFACE_DESCRIPTOR *interfaces[],
                         OP_REP_DEVLIST *list) {
   set_op_rep_devlist_header(htons(273), htons(5), 0, htonl(1), &list->header);
-  memset(list->device.usbPath,0,256);
-  strcpy(list->device.usbPath,"/sys/devices/pci0000:00/0000:00:01.2/usb1/1-1");
-  memset(list->device.busID,0,32);
-  strcpy(list->device.busID,"1-1");
-  list->device.busnum=htonl(1);
-  list->device.devnum=htonl(2);
-  list->device.speed=htonl(2);
-
-  set_op_rep_devlist_device(dev_dsc, config, &list->device);
+  set_op_rep_device(dev_dsc, config, &list->device);
   set_op_rep_devlist_interfaces(interfaces, &list->interfaces,
                                 config->bNumInterfaces);
 }
 
-void handle_attach(const USB_DEVICE_DESCRIPTOR *dev_dsc, OP_REP_IMPORT *rep)
-{
-  CONFIG_GEN * conf= (CONFIG_GEN *)configuration; 
-    
-  rep->version=htons(273);
-  rep->command=htons(3);
-  rep->status=0;
-  memset(rep->usbPath,0,256);
-  strcpy(rep->usbPath,"/sys/devices/pci0000:00/0000:00:01.2/usb1/1-1");
-  memset(rep->busID,0,32);
-  strcpy(rep->busID,"1-1");
-  rep->busnum=htonl(1);
-  rep->devnum=htonl(2);
-  rep->speed=htonl(2);
-  rep->idVendor=dev_dsc->idVendor;
-  rep->idProduct=dev_dsc->idProduct;
-  rep->bcdDevice=dev_dsc->bcdDevice;
-  rep->bDeviceClass=dev_dsc->bDeviceClass;
-  rep->bDeviceSubClass=dev_dsc->bDeviceSubClass;
-  rep->bDeviceProtocol=dev_dsc->bDeviceProtocol;
-  rep->bNumConfigurations=dev_dsc->bNumConfigurations; 
-  rep->bConfigurationValue=conf->dev_conf.bConfigurationValue;
-  rep->bNumInterfaces=conf->dev_conf.bNumInterfaces;
+// Creates the OP_REP_IMPORT message used to respond to a request to attach a
+// host USB device.
+void handle_attach(const USB_DEVICE_DESCRIPTOR *dev_dsc,
+                   const USB_CONFIGURATION_DESCRIPTOR *config,
+                   OP_REP_IMPORT *rep) {
+  set_op_header(htons(273), htons(3), 0, &rep->header);
+  set_op_rep_device(dev_dsc, config, &rep->device);
 }
 
 void pack(int * data, int size)
@@ -169,7 +162,6 @@ void unpack(int * data, int size)
    data[size-1]=data[size-2];
    data[size-2]=i;
 }  
-
 
 void send_usb_req(int sockfd, USBIP_RET_SUBMIT * usb_req, char * data, unsigned int size, unsigned int status)
 {
@@ -447,7 +439,8 @@ usbip_run (const USB_DEVICE_DESCRIPTOR *dev_dsc)                                
 #ifdef _DEBUG
              print_recv(busid, 32,"Busid");
 #endif
-               handle_attach(dev_dsc,&rep);
+               CONFIG_GEN *conf = (CONFIG_GEN *)configuration;
+               handle_attach(dev_dsc, &conf->dev_conf, &rep);
                if (send (sockfd, (char *)&rep, sizeof(OP_REP_IMPORT), 0) != sizeof(OP_REP_IMPORT))
                {
                    printf ("send error : %s \n", strerror (errno));

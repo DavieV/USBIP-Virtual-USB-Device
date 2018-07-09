@@ -54,21 +54,17 @@ typedef struct sockaddr sockaddr;
  */
 
 // USBIP data struct
-typedef struct __attribute__((__packed__)) _OP_REQ_DEVLIST {
+
+// Contains the header values that are contained within all of the "OP" messages
+// used by usbip.
+typedef struct __attribute__((__packed__)) _OP_HEADER {
   word version;
   word command;
   int status;
-} OP_REQ_DEVLIST;
+} OP_HEADER;
 
-typedef struct __attribute__((__packed__)) _OP_REP_DEVLIST_HEADER {
-  word version;
-  word command;
-  int status;
-  int numExportedDevices;
-} OP_REP_DEVLIST_HEADER;
-
-//================= for each device
-typedef struct __attribute__((__packed__)) _OP_REP_DEVLIST_DEVICE {
+// Generic device descriptor used by OP_REP_DEVLIST and OP_REP_IMPORT.
+typedef struct __attribute__((__packed__)) _OP_REP_DEVICE {
   char usbPath[256];
   char busID[32];
   int busnum;
@@ -83,7 +79,18 @@ typedef struct __attribute__((__packed__)) _OP_REP_DEVLIST_DEVICE {
   byte bConfigurationValue;
   byte bNumConfigurations;
   byte bNumInterfaces;
-} OP_REP_DEVLIST_DEVICE;
+} OP_REP_DEVICE;
+
+// The OP_REQ_DEVLIST message contains the same information as OP_HEADER.
+typedef OP_HEADER OP_REQ_DEVLIST; 
+
+typedef struct __attribute__((__packed__)) _OP_REP_DEVLIST_HEADER {
+  OP_HEADER header;
+  int numExportedDevices;
+} OP_REP_DEVLIST_HEADER;
+
+//================= for each device
+typedef OP_REP_DEVICE OP_REP_DEVLIST_DEVICE;
 
 //================== for each interface
 typedef struct __attribute__((__packed__)) _OP_REP_DEVLIST_INTERFACE {
@@ -100,31 +107,14 @@ typedef struct __attribute__((__packed__)) _OP_REP_DEVLIST {
 } OP_REP_DEVLIST;
 
 typedef struct __attribute__((__packed__)) _OP_REQ_IMPORT {
-  word version;
-  word command;
-  int status;
+  OP_HEADER header;
   char busID[32];
 } OP_REQ_IMPORT;
 
 typedef struct __attribute__((__packed__)) _OP_REP_IMPORT {
-  word version;
-  word command;
-  int status;
+  OP_HEADER header;
   //------------- if not ok, finish here
-  char usbPath[256];
-  char busID[32];
-  int busnum;
-  int devnum;
-  int speed;
-  word idVendor;
-  word idProduct;
-  word bcdDevice;
-  byte bDeviceClass;
-  byte bDeviceSubClass;
-  byte bDeviceProtocol;
-  byte bConfigurationValue;
-  byte bNumConfigurations;
-  byte bNumInterfaces;
+  OP_REP_DEVICE device;
 } OP_REP_IMPORT;
 
 typedef struct __attribute__((__packed__)) _USBIP_CMD_SUBMIT {
