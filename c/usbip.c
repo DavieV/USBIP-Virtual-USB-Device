@@ -244,13 +244,12 @@ int handle_get_descriptor(int sockfd, StandardDeviceRequest *control_req,
   return 1;
 }
 
-int handle_set_configuration(int sockfd, StandardDeviceRequest * control_req, USBIP_RET_SUBMIT *usb_req)
-{
-  int handled = 0;
-  printf("handle_set_configuration %u[%u]\n",control_req->wValue1,control_req->wValue0 );
-  handled = 1;
-  send_usb_req(sockfd, usb_req, "", 0, 0);        
-  return handled;
+int handle_set_configuration(int sockfd, StandardDeviceRequest *control_req,
+                             USBIP_RET_SUBMIT *usb_req) {
+  printf("handle_set_configuration %u[%u]\n", control_req->wValue1,
+         control_req->wValue0);
+  send_usb_req(sockfd, usb_req, "", 0, 0);
+  return 1;
 }
 
 //http://www.usbmadesimple.co.uk/ums_4.htm
