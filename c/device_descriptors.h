@@ -102,7 +102,7 @@ typedef struct __attribute__((__packed__)) _USB_HID_DESCRIPTOR {
   word wRPDescriptorLength;
 } USB_HID_DESCRIPTOR;
 
-// Configuration
+// Represents a configured HID.
 typedef struct __attribute__((__packed__)) _CONFIG_HID {
   USB_CONFIGURATION_DESCRIPTOR dev_conf;
   USB_INTERFACE_DESCRIPTOR dev_int;

@@ -55,6 +55,7 @@ WORD wVersionRequested = 2;
 WSADATA wsaData;
 #endif
 
+// Sets the OP_REP_DEVLIST_HEADER |header| using the given values.
 void set_op_rep_devlist_header(word version, word command, int status,
                                int numExportedDevices,
                                OP_REP_DEVLIST_HEADER *header) {
@@ -64,10 +65,44 @@ void set_op_rep_devlist_header(word version, word command, int status,
   header->numExportedDevices = numExportedDevices;
 }
 
-void handle_device_list(const USB_DEVICE_DESCRIPTOR *dev_dsc, OP_REP_DEVLIST *list)
-{
-  CONFIG_GEN * conf= (CONFIG_GEN *)configuration;   
-  int i;
+// Sets the OP_REP_DEVLIST_DEVICE |device| using the corresponding values in
+// |dev_dsc| and |config|.
+void set_op_rep_devlist_device(const USB_DEVICE_DESCRIPTOR *dev_dsc,
+                               const USB_CONFIGURATION_DESCRIPTOR *config,
+                               OP_REP_DEVLIST_DEVICE *device) {
+  // Set values using |dev_dsc|.
+  device->idVendor = htons(dev_dsc->idVendor);
+  device->idProduct = htons(dev_dsc->idProduct);
+  device->bcdDevice = htons(dev_dsc->bcdDevice);
+  device->bDeviceClass = dev_dsc->bDeviceClass;
+  device->bDeviceSubClass = dev_dsc->bDeviceSubClass;
+  device->bDeviceProtocol = dev_dsc->bDeviceProtocol;
+  device->bNumConfigurations = dev_dsc->bNumConfigurations;
+
+  // Set values using |config|.
+  device->bConfigurationValue = config->bConfigurationValue;
+  device->bNumInterfaces = config->bNumInterfaces;
+}
+
+// Assigns the values from |interfaces| into |rep_interfaces|.
+void set_op_rep_devlist_interfaces(const USB_INTERFACE_DESCRIPTOR *interfaces[],
+                                   OP_REP_DEVLIST_INTERFACE **rep_interfaces,
+                                   byte num_interfaces) {
+  *rep_interfaces = malloc(num_interfaces * sizeof(OP_REP_DEVLIST_INTERFACE));
+  for (int i = 0; i < num_interfaces; i++) {
+    (*rep_interfaces)[i].bInterfaceClass = interfaces[i]->bInterfaceClass;
+    (*rep_interfaces)[i].bInterfaceSubClass = interfaces[i]->bInterfaceSubClass;
+    (*rep_interfaces)[i].bInterfaceProtocol = interfaces[i]->bInterfaceProtocol;
+    (*rep_interfaces)[i].padding = 0;
+  }
+}
+
+// Populates |list| using the USB device descriptor |dev_dsc| that we wish to
+// report.
+void handle_device_list(const USB_DEVICE_DESCRIPTOR *dev_dsc,
+                        const USB_CONFIGURATION_DESCRIPTOR *config,
+                        const USB_INTERFACE_DESCRIPTOR *interfaces[],
+                        OP_REP_DEVLIST *list) {
   set_op_rep_devlist_header(htons(273), htons(5), 0, htonl(1), &list->header);
   memset(list->device.usbPath,0,256);
   strcpy(list->device.usbPath,"/sys/devices/pci0000:00/0000:00:01.2/usb1/1-1");
@@ -76,23 +111,10 @@ void handle_device_list(const USB_DEVICE_DESCRIPTOR *dev_dsc, OP_REP_DEVLIST *li
   list->device.busnum=htonl(1);
   list->device.devnum=htonl(2);
   list->device.speed=htonl(2);
-  list->device.idVendor=htons(dev_dsc->idVendor);
-  list->device.idProduct=htons(dev_dsc->idProduct);
-  list->device.bcdDevice=htons(dev_dsc->bcdDevice);
-  list->device.bDeviceClass=dev_dsc->bDeviceClass;
-  list->device.bDeviceSubClass=dev_dsc->bDeviceSubClass;
-  list->device.bDeviceProtocol=dev_dsc->bDeviceProtocol;
-  list->device.bConfigurationValue=conf->dev_conf.bConfigurationValue;
-  list->device.bNumConfigurations=dev_dsc->bNumConfigurations; 
-  list->device.bNumInterfaces=conf->dev_conf.bNumInterfaces;
-  list->interfaces=malloc(list->device.bNumInterfaces*sizeof(OP_REP_DEVLIST_INTERFACE));
-  for(i=0;i<list->device.bNumInterfaces;i++)
-  {     
-    list->interfaces[i].bInterfaceClass=interfaces[i]->bInterfaceClass;
-    list->interfaces[i].bInterfaceSubClass=interfaces[i]->bInterfaceSubClass;
-    list->interfaces[i].bInterfaceProtocol=interfaces[i]->bInterfaceProtocol;
-    list->interfaces[i].padding=0;
-  }
+
+  set_op_rep_devlist_device(dev_dsc, config, &list->device);
+  set_op_rep_devlist_interfaces(interfaces, &list->interfaces,
+                                config->bNumInterfaces);
 }
 
 void handle_attach(const USB_DEVICE_DESCRIPTOR *dev_dsc, OP_REP_IMPORT *rep)
@@ -392,7 +414,8 @@ usbip_run (const USB_DEVICE_DESCRIPTOR *dev_dsc)                                
                OP_REP_DEVLIST list;
                printf("list of devices\n");
 
-               handle_device_list(dev_dsc,&list);
+               CONFIG_GEN *conf = (CONFIG_GEN *)configuration;
+               handle_device_list(dev_dsc, &conf->dev_conf, interfaces, &list);
 
                if (send (sockfd, (char *)&list.header, sizeof(OP_REP_DEVLIST_HEADER), 0) != sizeof(OP_REP_DEVLIST_HEADER))
                {
