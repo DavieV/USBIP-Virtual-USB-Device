@@ -135,65 +135,71 @@ void handle_attach(const USB_DEVICE_DESCRIPTOR *dev_dsc,
   set_op_rep_device(dev_dsc, config, &rep->device);
 }
 
-void pack(int * data, int size)
-{
-   int i;
-   size=size/4;
-   for(i=0;i<size;i++)
-   {
-      data[i]=htonl(data[i]);
-   }
-   //swap setup
-   i=data[size-1];
-   data[size-1]=data[size-2];
-   data[size-2]=i;
-}  
-             
-void unpack(int * data, int size)
-{
-   int i;
-   size=size/4;
-   for(i=0;i<size;i++)
-   {
-      data[i]=ntohl(data[i]);
-   }
-   //swap setup
-   i=data[size-1];
-   data[size-1]=data[size-2];
-   data[size-2]=i;
-}  
+void swap(int *a, int *b) {
+  int tmp = *a;
+  *a = *b;
+  *b = tmp;
+}
 
-void send_usb_req(int sockfd, USBIP_RET_SUBMIT * usb_req, char * data, unsigned int size, unsigned int status)
-{
-        usb_req->command=0x3;
-        usb_req->status=status;
-        usb_req->actual_length=size;
-        usb_req->start_frame=0x0;
-        usb_req->number_of_packets=0x0;
-	
-        usb_req->setup=0x0;
-        usb_req->devid=0x0;
-	usb_req->direction=0x0;
-        usb_req->ep=0x0;    
-    
-        pack((int *)usb_req, sizeof(USBIP_RET_SUBMIT));
- 
-        if (send (sockfd, (char *)usb_req, sizeof(USBIP_RET_SUBMIT), 0) != sizeof(USBIP_RET_SUBMIT))
-        {
-          printf ("send error : %s \n", strerror (errno));
-          exit(-1);
-        };
+// Converts the contents of either a USBIP_CMD_SUBMIT or USB_RET_SUBMIT message
+// into network byte order.
+void pack(int *data, size_t msg_size) {
+  int size = msg_size / 4;
+  for (int i = 0; i < size; i++) {
+    data[i] = htonl(data[i]);
+  }
+  // Put |setup| into network byte order. Since |setup| is a 64-bit integer we
+  // have to swap the final 2 int entries since they are both a part of |setup|.
+  swap(&data[size - 1], &data[size - 2]);
+}
 
-        if(size > 0)
-        {
-           if (send (sockfd, data, size, 0) != size)
-           {
-             printf ("send error : %s \n", strerror (errno));
-             exit(-1);
-           };
-        }
-} 
-            
+// Converts the contents of either a USBIP_CMD_SUBMIT or USB_RET_SUBMIT message
+// into host byte order.
+void unpack(int *data, size_t msg_size) {
+  int size = msg_size / 4;
+  for (int i = 0; i < size; i++) {
+    data[i] = ntohl(data[i]);
+  }
+  // Put |setup| into host byte order. Since |setup| is a 64-bit integer we
+  // have to swap the final 2 int entries since they are both a part of |setup|.
+  swap(&data[size - 1], &data[size - 2]);
+}
+
+// Sends a USBIP_RET_SUBMET message. |usb_req| contains the metadata for the
+// message and |data| contains the actual URB data bytes.
+void send_usb_req(int sockfd, USBIP_RET_SUBMIT *usb_req, char *data,
+                  unsigned int data_size, unsigned int status) {
+  usb_req->command = 0x3;
+  // TODO(daviev): Figure out why seqnum isn't set.
+  usb_req->devid = 0x0;
+  usb_req->direction = 0x0;
+  usb_req->ep = 0x0;
+  usb_req->status = status;
+  usb_req->actual_length = data_size;
+  usb_req->start_frame = 0x0;
+  usb_req->number_of_packets = 0x0;
+  // TODO(daviev): Figure out why error count isn't set.
+  usb_req->setup = 0x0;
+
+  size_t request_size = sizeof(*usb_req);
+  pack((int *)usb_req, request_size);
+
+  if (send(sockfd, (char *)usb_req, request_size, 0) != request_size) {
+    printf("send error : %s \n", strerror(errno));
+    exit(-1);
+  };
+
+  // Skip sending data if there isn't any.
+  if (data_size == 0) {
+    return;
+  }
+
+  if (send(sockfd, data, data_size, 0) != data_size) {
+    printf("send error : %s \n", strerror(errno));
+    exit(-1);
+  }
+}
+
 int handle_get_descriptor(int sockfd, StandardDeviceRequest * control_req, USBIP_RET_SUBMIT *usb_req)
 {
   int handled = 0;
