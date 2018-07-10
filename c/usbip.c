@@ -254,65 +254,71 @@ int handle_set_configuration(int sockfd, StandardDeviceRequest *control_req,
 
 //http://www.usbmadesimple.co.uk/ums_4.htm
 
-void handle_usb_control(int sockfd, USBIP_RET_SUBMIT *usb_req)
-{
-        int handled = 0;
-        StandardDeviceRequest control_req;
-#ifdef LINUX
-        printf("%016llX\n",usb_req->setup); 
-#else
-        printf("%016I64X\n",usb_req->setup); 
-#endif
-        control_req.bmRequestType=  (usb_req->setup & 0xFF00000000000000)>>56;  
-        control_req.bRequest=       (usb_req->setup & 0x00FF000000000000)>>48;  
-        control_req.wValue0=        (usb_req->setup & 0x0000FF0000000000)>>40;  
-        control_req.wValue1=        (usb_req->setup & 0x000000FF00000000)>>32;
-        control_req.wIndex0=        (usb_req->setup & 0x00000000FF000000)>>24; 
-        control_req.wIndex1=        (usb_req->setup & 0x0000000000FF0000)>>16;
-        control_req.wLength=   ntohs(usb_req->setup & 0x000000000000FFFF);  
-        printf("  UC Request Type %u\n",control_req.bmRequestType);
-        printf("  UC Request %u\n",control_req.bRequest);
-        printf("  UC Value  %u[%u]\n",control_req.wValue1,control_req.wValue0);
-        printf("  UCIndex  %u-%u\n",control_req.wIndex1,control_req.wIndex0);
-        printf("  UC Length %u\n",control_req.wLength);
-        
-        if(control_req.bmRequestType == 0x80) // Host Request
-        {
-          if(control_req.bRequest == 0x06) // Get Descriptor
-          {
-            handled = handle_get_descriptor(sockfd, &control_req, usb_req);
-          }
-          if(control_req.bRequest == 0x00) // Get STATUS
-          {
-            char data[2];
-            data[0]=0x01;
-            data[1]=0x00;
-            send_usb_req(sockfd,usb_req, data, 2 , 0);        
-            handled = 1;
-            printf("GET_STATUS\n");   
-          }
-        }
-        if(control_req.bmRequestType == 0x00) // 
-        {
-            if(control_req.bRequest == 0x09) // Set Configuration
-            {
-                handled = handle_set_configuration(sockfd, &control_req, usb_req);
-            }
-        }  
-        if(control_req.bmRequestType == 0x01)
-        { 
-          if(control_req.bRequest == 0x0B) //SET_INTERFACE  
-          {
-            printf("SET_INTERFACE\n");   
-            send_usb_req(sockfd,usb_req,"",0,1);
-            handled=1; 
-          } 
-        }
-        if(! handled)
-            handle_unknown_control(sockfd, &control_req, usb_req);
+// Fills the corresponding StandardDeviceRequest values of |request| using
+// |setup| which represents a USB SETUP packet.
+void create_standard_device_request(long long setup,
+                                    StandardDeviceRequest *request) {
+  request->bmRequestType = (setup & 0xFF00000000000000) >> 56;
+  request->bRequest = (setup & 0x00FF000000000000) >> 48;
+  request->wValue0 = (setup & 0x0000FF0000000000) >> 40;
+  request->wValue1 = (setup & 0x000000FF00000000) >> 32;
+  request->wIndex0 = (setup & 0x00000000FF000000) >> 24;
+  request->wIndex1 = (setup & 0x0000000000FF0000) >> 16;
+  request->wLength = ntohs(setup & 0x000000000000FFFF);
 }
 
-           
+void handle_usb_control(int sockfd, USBIP_RET_SUBMIT *usb_req) {
+  int handled = 0;
+  StandardDeviceRequest control_req;
+#ifdef LINUX
+  printf("%016llX\n", usb_req->setup);
+#else
+  printf("%016I64X\n", usb_req->setup);
+#endif
+  create_standard_device_request(usb_req->setup, &control_req);
+  printf("  UC Request Type %u\n", control_req.bmRequestType);
+  printf("  UC Request %u\n", control_req.bRequest);
+  printf("  UC Value  %u[%u]\n", control_req.wValue1, control_req.wValue0);
+  printf("  UCIndex  %u-%u\n", control_req.wIndex1, control_req.wIndex0);
+  printf("  UC Length %u\n", control_req.wLength);
+
+  // Host Request
+  // The 7th bit in |bmRequestType| indicates the data direction. If the bit is
+  // set then the the data flows from device to host.
+  if (control_req.bmRequestType == 0x80) {
+    // GET_DESCRIPTOR
+    if (control_req.bRequest == 0x06) {
+      handled = handle_get_descriptor(sockfd, &control_req, usb_req);
+    }
+    // GET_STATUS
+    if (control_req.bRequest == 0x00) {
+      char data[2];
+      data[0] = 0x01;
+      data[1] = 0x00;
+      send_usb_req(sockfd, usb_req, data, 2, 0);
+      handled = 1;
+      printf("GET_STATUS\n");
+    }
+  }
+  if (control_req.bmRequestType == 0x00) {
+    // SET_CONFIGURATION
+    if (control_req.bRequest == 0x09) {
+      handled = handle_set_configuration(sockfd, &control_req, usb_req);
+    }
+  }
+  if (control_req.bmRequestType == 0x01) {
+    // SET_INTERFACE
+    if (control_req.bRequest == 0x0B) {
+      printf("SET_INTERFACE\n");
+      send_usb_req(sockfd, usb_req, "", 0, 1);
+      handled = 1;
+    }
+  }
+  if (!handled) {
+    handle_unknown_control(sockfd, &control_req, usb_req);
+  }
+}
+
 void handle_usb_request(int sockfd, USBIP_RET_SUBMIT *ret, int bl)
 {
    if(ret->ep == 0)
