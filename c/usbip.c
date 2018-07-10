@@ -115,23 +115,79 @@ void set_op_rep_devlist_interfaces(const USB_INTERFACE_DESCRIPTOR *interfaces[],
 
 // Creates the OP_REP_DEVLIST message used to respond to a request to list the
 // host's exported USB devices.
-void handle_device_list(const USB_DEVICE_DESCRIPTOR *dev_dsc,
-                        const USB_CONFIGURATION_DESCRIPTOR *config,
-                        const USB_INTERFACE_DESCRIPTOR *interfaces[],
-                        OP_REP_DEVLIST *list) {
+void create_op_rep_devlist(const USB_DEVICE_DESCRIPTOR *dev_dsc,
+                           const USB_CONFIGURATION_DESCRIPTOR *config,
+                           const USB_INTERFACE_DESCRIPTOR *interfaces[],
+                           OP_REP_DEVLIST *list) {
   set_op_rep_devlist_header(htons(273), htons(5), 0, htonl(1), &list->header);
   set_op_rep_device(dev_dsc, config, &list->device);
   set_op_rep_devlist_interfaces(interfaces, &list->interfaces,
                                 config->bNumInterfaces);
 }
 
+// Handles an OP_REQ_DEVLIST request by sending an OP_REP_DEVLIST message which
+// describes the virtual USB device along |sockfd|.
+void handle_device_list(const USB_DEVICE_DESCRIPTOR *dev_dsc, int sockfd) {
+  OP_REP_DEVLIST list;
+  printf("list devices\n");
+
+  CONFIG_GEN *conf = (CONFIG_GEN *)configuration;
+  create_op_rep_devlist(dev_dsc, &conf->dev_conf, interfaces, &list);
+
+  ssize_t sent = send(sockfd, &list.header, sizeof(list.header), 0);
+  if (sent != sizeof(OP_REP_DEVLIST_HEADER)) {
+    printf("send error : %s \n", strerror(errno));
+    goto cleanup;
+  }
+
+  sent = send(sockfd, &list.device, sizeof(list.device), 0);
+  if (sent != sizeof(list.device)) {
+    printf("send error : %s \n", strerror(errno));
+    goto cleanup;
+  }
+
+  sent = send(sockfd, list.interfaces,
+              sizeof(*list.interfaces) * list.device.bNumInterfaces, 0);
+  if (sent != sizeof(*list.interfaces) * list.device.bNumInterfaces) {
+    printf("send error : %s \n", strerror(errno));
+    goto cleanup;
+  }
+
+cleanup:
+  free(list.interfaces);
+}
+
 // Creates the OP_REP_IMPORT message used to respond to a request to attach a
 // host USB device.
-void handle_attach(const USB_DEVICE_DESCRIPTOR *dev_dsc,
-                   const USB_CONFIGURATION_DESCRIPTOR *config,
-                   OP_REP_IMPORT *rep) {
+void create_op_rep_import(const USB_DEVICE_DESCRIPTOR *dev_dsc,
+                          const USB_CONFIGURATION_DESCRIPTOR *config,
+                          OP_REP_IMPORT *rep) {
   set_op_header(htons(273), htons(3), 0, &rep->header);
   set_op_rep_device(dev_dsc, config, &rep->device);
+}
+
+// Handles and OP_REQ_IMPORT request by sending an OP_REP_IMPORT message which
+// describes the virtual USB device along |sockfd|.
+int handle_attach(const USB_DEVICE_DESCRIPTOR *dev_dsc, int sockfd) {
+  char busid[32];
+  OP_REP_IMPORT rep;
+  printf("attach device\n");
+  ssize_t received = recv(sockfd, busid, 32, 0);
+  if (received != 32) {
+    printf("receive error : %s \n", strerror(errno));
+    return 1;
+  }
+#ifdef _DEBUG
+  print_recv(busid, 32, "Busid");
+#endif
+  CONFIG_GEN *conf = (CONFIG_GEN *)configuration;
+  create_op_rep_import(dev_dsc, &conf->dev_conf, &rep);
+  ssize_t sent = send(sockfd, &rep, sizeof(rep), 0);
+  if (sent != sizeof(rep)) {
+    printf("send error : %s \n", strerror(errno));
+    return 1;
+  }
+  return 0;
 }
 
 void swap(int *a, int *b) {
@@ -399,51 +455,11 @@ void usbip_run(const USB_DEVICE_DESCRIPTOR *dev_dsc) {
         printf("Header Packet\n");
         printf("command: 0x%02X\n", req.command);
         if (req.command == 0x8005) {
-          OP_REP_DEVLIST list;
-          printf("list of devices\n");
-
-          CONFIG_GEN *conf = (CONFIG_GEN *)configuration;
-          handle_device_list(dev_dsc, &conf->dev_conf, interfaces, &list);
-
-          if (send(sockfd, (char *)&list.header, sizeof(OP_REP_DEVLIST_HEADER),
-                   0) != sizeof(OP_REP_DEVLIST_HEADER)) {
-            printf("send error : %s \n", strerror(errno));
-            break;
-          }
-          if (send(sockfd, (char *)&list.device, sizeof(OP_REP_DEVLIST_DEVICE),
-                   0) != sizeof(OP_REP_DEVLIST_DEVICE)) {
-            printf("send error : %s \n", strerror(errno));
-            break;
-          }
-          if (send(
-                  sockfd, (char *)list.interfaces,
-                  sizeof(OP_REP_DEVLIST_INTERFACE) * list.device.bNumInterfaces,
-                  0) !=
-              sizeof(OP_REP_DEVLIST_INTERFACE) * list.device.bNumInterfaces) {
-            printf("send error : %s \n", strerror(errno));
-            break;
-          }
-          free(list.interfaces);
+          handle_device_list(dev_dsc, sockfd);
         } else if (req.command == 0x8003) {
-          char busid[32];
-          OP_REP_IMPORT rep;
-          printf("attach device\n");
-          nb = recv(sockfd, busid, 32, 0);
-          if (nb != 32) {
-            printf("receive error : %s \n", strerror(errno));
-            break;
+          if (!handle_attach(dev_dsc, sockfd)) {
+            attached = 1;
           }
-#ifdef _DEBUG
-          print_recv(busid, 32, "Busid");
-#endif
-          CONFIG_GEN *conf = (CONFIG_GEN *)configuration;
-          handle_attach(dev_dsc, &conf->dev_conf, &rep);
-          if (send(sockfd, (char *)&rep, sizeof(OP_REP_IMPORT), 0) !=
-              sizeof(OP_REP_IMPORT)) {
-            printf("send error : %s \n", strerror(errno));
-            break;
-          }
-          attached = 1;
         }
       } else {
         printf("------------------------------------------------\n");
