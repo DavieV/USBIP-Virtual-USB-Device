@@ -51,11 +51,6 @@ void print_recv(char *buff, int size, const char *desc) {
 }
 #endif
 
-#ifndef LINUX
-WORD wVersionRequested = 2;
-WSADATA wsaData;
-#endif
-
 // Sets the OP_HEADER |header| using the given values.
 void set_op_header(word version, word command, int status, OP_HEADER *header) {
   header->version = version;
@@ -325,11 +320,7 @@ void create_standard_device_request(long long setup,
 void handle_usb_control(int sockfd, USBIP_RET_SUBMIT *usb_req) {
   int handled = 0;
   StandardDeviceRequest control_req;
-#ifdef LINUX
   printf("%016llX\n", usb_req->setup);
-#else
-  printf("%016I64X\n", usb_req->setup);
-#endif
   create_standard_device_request(usb_req->setup, &control_req);
   printf("  UC Request Type %u\n", control_req.bmRequestType);
   printf("  UC Request %u\n", control_req.bRequest);
@@ -436,14 +427,6 @@ int accept_connection(int fd) {
 void usbip_run(const USB_DEVICE_DESCRIPTOR *dev_dsc) {
   unsigned char attached;
 
-#ifndef LINUX
-  WSAStartup(wVersionRequested, &wsaData);
-  if (wsaData.wVersion != wVersionRequested) {
-    fprintf(stderr, "\n Wrong version\n");
-    exit(-1);
-  }
-#endif
-
   int listenfd = setup_server_socket();
   struct sockaddr_in server = bind_server_socket(listenfd);
   char address[INET_ADDRSTRLEN];
@@ -506,11 +489,7 @@ void usbip_run(const USB_DEVICE_DESCRIPTOR *dev_dsc) {
         printf("usbip flags %u\n", cmd.transfer_flags);
         printf("usbip number of packets %u\n", cmd.number_of_packets);
         printf("usbip interval %u\n", cmd.interval);
-#ifdef LINUX
         printf("usbip setup %llu\n", cmd.setup);
-#else
-        printf("usbip setup %I64u\n", cmd.setup);
-#endif
         printf("usbip buffer length  %u\n", cmd.transfer_buffer_length);
         usb_req.command = 0;
         usb_req.seqnum = cmd.seqnum;
@@ -555,16 +534,10 @@ void usbip_run(const USB_DEVICE_DESCRIPTOR *dev_dsc) {
         if (cmd.command > 2) {
           printf("Unknown USBIP cmd!\n");
           close(connection);
-#ifndef LINUX
-          WSACleanup();
-#endif
           return;
         }
       }
     }
     close(connection);
   }
-#ifndef LINUX
-  WSACleanup();
-#endif
 }

@@ -25,16 +25,12 @@
 
 #include "device_descriptors.h"
 
-#ifdef LINUX
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
 #define min(a, b) ((a) < (b) ? (a) : (b))
-#else
-#include <winsock.h>
-#endif
 
 // system headers independent
 #include <errno.h>
