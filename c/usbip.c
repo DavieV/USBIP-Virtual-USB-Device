@@ -384,15 +384,56 @@ void handle_usb_request(int sockfd, USBIP_RET_SUBMIT *ret, int bl) {
   }
 }
 
+// Attempts to create the socket used for accepting connections on the server,
+// and if successful returns the file descriptor of the socket.
+int setup_server_socket() {
+  int fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (fd < 0) {
+    printf("socket error : %s\n", strerror(errno));
+    exit(1);
+  }
+
+  int reuse = 1;
+  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
+    perror("setsockopt(SO_REUSEADDR) failed");
+  }
+
+  return fd;
+}
+
+// Binds the server socket described by |fd| to an address and returns the
+// resulting sockaddr_in struct which contains the address.
+struct sockaddr_in bind_server_socket(int fd) {
+  struct sockaddr_in server;
+  memset(&server, 0, sizeof(server));
+  server.sin_family = AF_INET;
+  server.sin_addr.s_addr = htonl(INADDR_ANY);
+  server.sin_port = htons(TCP_SERV_PORT);
+
+  if (bind(fd, (sockaddr *)&server, sizeof(server)) < 0) {
+    printf("bind error : %s \n", strerror(errno));
+    exit(1);
+  }
+
+  return server;
+}
+
+// Accepts a new connection to the server described by |fd| and returns the file
+// descriptor of the connection.
+int accept_connection(int fd) {
+  struct sockaddr_in client;
+  socklen_t client_length = sizeof(client);
+  int connection = accept(fd, (struct sockaddr *)&client, &client_length);
+  if (connection < 0) {
+    printf("accept error : %s\n", strerror(errno));
+    exit(1);
+  }
+  printf("Connection address:%s\n", inet_ntoa(client.sin_addr));
+  return connection;
+}
+
 // Simple TCP server.
 void usbip_run(const USB_DEVICE_DESCRIPTOR *dev_dsc) {
-  struct sockaddr_in serv, cli;
-  int listenfd, sockfd, nb;
-#ifdef LINUX
-  unsigned int clilen;
-#else
-  int clilen;
-#endif
   unsigned char attached;
 
 #ifndef LINUX
@@ -401,51 +442,33 @@ void usbip_run(const USB_DEVICE_DESCRIPTOR *dev_dsc) {
     fprintf(stderr, "\n Wrong version\n");
     exit(-1);
   }
-
 #endif
 
-  if ((listenfd = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
-    printf("socket error : %s \n", strerror(errno));
-    exit(1);
-  }
-
-  int reuse = 1;
-  if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (const char *)&reuse,
-                 sizeof(reuse)) < 0) {
-    perror("setsockopt(SO_REUSEADDR) failed");
-  }
-
-  memset(&serv, 0, sizeof(serv));
-  serv.sin_family = AF_INET;
-  serv.sin_addr.s_addr = htonl(INADDR_ANY);
-  serv.sin_port = htons(TCP_SERV_PORT);
-
-  if (bind(listenfd, (sockaddr *)&serv, sizeof(serv)) < 0) {
-    printf("bind error : %s \n", strerror(errno));
+  int listenfd = setup_server_socket();
+  struct sockaddr_in server = bind_server_socket(listenfd);
+  char address[INET_ADDRSTRLEN];
+  if (inet_ntop(AF_INET, &server.sin_addr, address, INET_ADDRSTRLEN)) {
+    printf("Bound server to address %s:%hu\n", address, server.sin_port);
+  } else {
+    printf("inet_ntop error : %s\n", strerror(errno));
     exit(1);
   }
 
   if (listen(listenfd, SOMAXCONN) < 0) {
-    printf("listen error : %s \n", strerror(errno));
+    printf("listen error : %s\n", strerror(errno));
     exit(1);
   }
 
   for (;;) {
-    clilen = sizeof(cli);
-    sockfd = accept(listenfd, (sockaddr *)&cli, &clilen);
-    if (sockfd < 0) {
-      printf("accept error : %s \n", strerror(errno));
-      exit(1);
-    }
-    printf("Connection address:%s\n", inet_ntoa(cli.sin_addr));
+    int connection = accept_connection(listenfd);
     attached = 0;
 
     while (1) {
       if (!attached) {
         OP_REQ_DEVLIST req;
-        nb = recv(sockfd, (char *)&req, sizeof(OP_REQ_DEVLIST), 0);
-        if (nb != sizeof(OP_REQ_DEVLIST)) {
-          // printf ("receive error : %s \n", strerror (errno));
+        ssize_t received = recv(connection, &req, sizeof(req), 0);
+        if (received != sizeof(req)) {
+          printf("receive error : %s\n", strerror (errno));
           break;
         }
 #ifdef _DEBUG
@@ -455,9 +478,9 @@ void usbip_run(const USB_DEVICE_DESCRIPTOR *dev_dsc) {
         printf("Header Packet\n");
         printf("command: 0x%02X\n", req.command);
         if (req.command == 0x8005) {
-          handle_device_list(dev_dsc, sockfd);
+          handle_device_list(dev_dsc, connection);
         } else if (req.command == 0x8003) {
-          if (!handle_attach(dev_dsc, sockfd)) {
+          if (!handle_attach(dev_dsc, connection)) {
             attached = 1;
           }
         }
@@ -466,9 +489,9 @@ void usbip_run(const USB_DEVICE_DESCRIPTOR *dev_dsc) {
         printf("handles requests\n");
         USBIP_CMD_SUBMIT cmd;
         USBIP_RET_SUBMIT usb_req;
-        if ((nb = recv(sockfd, (char *)&cmd, sizeof(USBIP_CMD_SUBMIT), 0)) !=
-            sizeof(USBIP_CMD_SUBMIT)) {
-          printf("receive error : %s \n", strerror(errno));
+        ssize_t received = recv(connection, &cmd, sizeof(cmd), 0);
+        if (received != sizeof(cmd)) {
+          printf("receive error : %s\n", strerror(errno));
           break;
         }
 #ifdef _DEBUG
@@ -488,7 +511,7 @@ void usbip_run(const USB_DEVICE_DESCRIPTOR *dev_dsc) {
 #else
         printf("usbip setup %I64u\n", cmd.setup);
 #endif
-        printf("usbip buffer lenght  %u\n", cmd.transfer_buffer_length);
+        printf("usbip buffer length  %u\n", cmd.transfer_buffer_length);
         usb_req.command = 0;
         usb_req.seqnum = cmd.seqnum;
         usb_req.devid = cmd.devid;
@@ -502,7 +525,7 @@ void usbip_run(const USB_DEVICE_DESCRIPTOR *dev_dsc) {
         usb_req.setup = cmd.setup;
 
         if (cmd.command == 1) {
-          handle_usb_request(sockfd, &usb_req, cmd.transfer_buffer_length);
+          handle_usb_request(connection, &usb_req, cmd.transfer_buffer_length);
         }
 
         // Unlink URB
@@ -531,7 +554,7 @@ void usbip_run(const USB_DEVICE_DESCRIPTOR *dev_dsc) {
 
         if (cmd.command > 2) {
           printf("Unknown USBIP cmd!\n");
-          close(sockfd);
+          close(connection);
 #ifndef LINUX
           WSACleanup();
 #endif
@@ -539,7 +562,7 @@ void usbip_run(const USB_DEVICE_DESCRIPTOR *dev_dsc) {
         }
       }
     }
-    close(sockfd);
+    close(connection);
   }
 #ifndef LINUX
   WSACleanup();
