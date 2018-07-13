@@ -42,6 +42,9 @@
 
 // Define constants
 #define TCP_SERV_PORT 3240
+#define OP_REQ_DEVLIST_CMD 0x8005
+#define OP_REQ_IMPORT_CMD 0x8003
+
 typedef struct sockaddr sockaddr;
 
 /*

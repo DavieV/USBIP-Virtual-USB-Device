@@ -425,8 +425,6 @@ int accept_connection(int fd) {
 
 // Simple TCP server.
 void usbip_run(const USB_DEVICE_DESCRIPTOR *dev_dsc) {
-  unsigned char attached;
-
   int listenfd = setup_server_socket();
   struct sockaddr_in server = bind_server_socket(listenfd);
   char address[INET_ADDRSTRLEN];
@@ -444,25 +442,30 @@ void usbip_run(const USB_DEVICE_DESCRIPTOR *dev_dsc) {
 
   for (;;) {
     int connection = accept_connection(listenfd);
-    attached = 0;
+    int attached = 0;
 
     while (1) {
       if (!attached) {
-        OP_REQ_DEVLIST req;
-        ssize_t received = recv(connection, &req, sizeof(req), 0);
-        if (received != sizeof(req)) {
+        // Read in the header first in order to determine whether the request is
+        // an OP_REQ_DEVLIST or an OP_REQ_IMPORT.
+        OP_HEADER request;
+        ssize_t received = recv(connection, &request, sizeof(request), 0);
+        if (received != sizeof(request)) {
           printf("receive error : %s\n", strerror (errno));
           break;
         }
 #ifdef _DEBUG
-        print_recv((char *)&req, sizeof(OP_REQ_DEVLIST), "OP_REQ_DEVLIST");
+        print_recv((char *)&request, sizeof(request), "OP_REQ_DEVLIST");
 #endif
-        req.command = ntohs(req.command);
+        request.command = ntohs(request.command);
         printf("Header Packet\n");
-        printf("command: 0x%02X\n", req.command);
-        if (req.command == 0x8005) {
+        printf("command: 0x%02X\n", request.command);
+
+        // Request is OP_REQ_DEVLIST 
+        if (request.command == OP_REQ_DEVLIST_CMD) {
           handle_device_list(dev_dsc, connection);
-        } else if (req.command == 0x8003) {
+        // Request is OP_REQ_IMPORT
+        } else if (request.command == OP_REQ_IMPORT_CMD) {
           if (!handle_attach(dev_dsc, connection)) {
             attached = 1;
           }
