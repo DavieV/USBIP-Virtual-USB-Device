@@ -43,7 +43,7 @@ void print_recv(char *buff, int size, const char *desc) {
     if (j > 7) {
       printf("\n");
       j = 0;
-    };
+    }
     j++;
   }
 
@@ -263,7 +263,7 @@ void send_usb_req(int sockfd, USBIP_RET_SUBMIT *usb_req, char *data,
   if (send(sockfd, (char *)usb_req, request_size, 0) != request_size) {
     printf("send error : %s \n", strerror(errno));
     exit(-1);
-  };
+  }
 
   // Skip sending data if there isn't any.
   if (data_size == 0) {
@@ -537,7 +537,7 @@ void usbip_run(const USB_DEVICE_DESCRIPTOR *dev_dsc) {
            {
              printf ("send error : %s \n", strerror (errno));
              exit(-1);
-           };
+           }
           */
         }
 
