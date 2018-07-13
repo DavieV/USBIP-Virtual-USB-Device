@@ -215,6 +215,32 @@ void unpack(int *data, size_t msg_size) {
   swap(&data[size - 1], &data[size - 2]);
 }
 
+void print_usbip_cmd_submit(const USBIP_CMD_SUBMIT *command) {
+  printf("usbip cmd %u\n", command->command);
+  printf("usbip seqnum %u\n", command->seqnum);
+  printf("usbip devid %u\n", command->devid);
+  printf("usbip direction %u\n", command->direction);
+  printf("usbip ep %u\n", command->ep);
+  printf("usbip flags %u\n", command->transfer_flags);
+  printf("usbip number of packets %u\n", command->number_of_packets);
+  printf("usbip interval %u\n", command->interval);
+  printf("usbip setup %llu\n", command->setup);
+  printf("usbip buffer length  %u\n", command->transfer_buffer_length);
+}
+
+// Creates a new USBIP_RET_SUBMIT which is initialized using the shared values
+// from |command|.
+USBIP_RET_SUBMIT create_usbip_ret_submit(const USBIP_CMD_SUBMIT *command) {
+  USBIP_RET_SUBMIT usb_req;
+  memset(&usb_req, 0, sizeof(usb_req));
+  usb_req.seqnum = command->seqnum;
+  usb_req.devid = command->devid;
+  usb_req.direction = command->direction;
+  usb_req.ep = command->ep;
+  usb_req.setup = command->setup;
+  return usb_req;
+}
+
 // Sends a USBIP_RET_SUBMIT message. |usb_req| contains the metadata for the
 // message and |data| contains the actual URB data bytes.
 void send_usb_req(int sockfd, USBIP_RET_SUBMIT *usb_req, char *data,
@@ -473,47 +499,28 @@ void usbip_run(const USB_DEVICE_DESCRIPTOR *dev_dsc) {
       } else {
         printf("------------------------------------------------\n");
         printf("handles requests\n");
-        USBIP_CMD_SUBMIT cmd;
-        USBIP_RET_SUBMIT usb_req;
-        ssize_t received = recv(connection, &cmd, sizeof(cmd), 0);
-        if (received != sizeof(cmd)) {
+        USBIP_CMD_SUBMIT command;
+        ssize_t received = recv(connection, &command, sizeof(command), 0);
+        if (received != sizeof(command)) {
           printf("receive error : %s\n", strerror(errno));
           break;
         }
 #ifdef _DEBUG
-        print_recv((char *)&cmd, sizeof(USBIP_CMD_SUBMIT), "USBIP_CMD_SUBMIT");
+        print_recv((char *)&command, sizeof(command), "USBIP_CMD_SUBMIT");
 #endif
-        unpack((int *)&cmd, sizeof(USBIP_CMD_SUBMIT));
-        printf("usbip cmd %u\n", cmd.command);
-        printf("usbip seqnum %u\n", cmd.seqnum);
-        printf("usbip devid %u\n", cmd.devid);
-        printf("usbip direction %u\n", cmd.direction);
-        printf("usbip ep %u\n", cmd.ep);
-        printf("usbip flags %u\n", cmd.transfer_flags);
-        printf("usbip number of packets %u\n", cmd.number_of_packets);
-        printf("usbip interval %u\n", cmd.interval);
-        printf("usbip setup %llu\n", cmd.setup);
-        printf("usbip buffer length  %u\n", cmd.transfer_buffer_length);
-        usb_req.command = 0;
-        usb_req.seqnum = cmd.seqnum;
-        usb_req.devid = cmd.devid;
-        usb_req.direction = cmd.direction;
-        usb_req.ep = cmd.ep;
-        usb_req.status = 0;
-        usb_req.actual_length = 0;
-        usb_req.start_frame = 0;
-        usb_req.number_of_packets = 0;
-        usb_req.error_count = 0;
-        usb_req.setup = cmd.setup;
+        unpack((int *)&command, sizeof(command));
+        print_usbip_cmd_submit(&command);
+        USBIP_RET_SUBMIT usb_req = create_usbip_ret_submit(&command);
 
-        if (cmd.command == 1) {
-          handle_usb_request(connection, &usb_req, cmd.transfer_buffer_length);
+        if (command.command == 1) {
+          handle_usb_request(connection, &usb_req,
+                             command.transfer_buffer_length);
         }
 
         // Unlink URB
-        if (cmd.command == 2) {
+        if (command.command == 2) {
           printf("####################### Unlink URB %u  (not working!!!)\n",
-                 cmd.transfer_flags);
+                 command.transfer_flags);
           // FIXME
           /*
            USBIP_RET_UNLINK ret;
@@ -534,7 +541,7 @@ void usbip_run(const USB_DEVICE_DESCRIPTOR *dev_dsc) {
           */
         }
 
-        if (cmd.command > 2) {
+        if (command.command > 2) {
           printf("Unknown USBIP cmd!\n");
           close(connection);
           return;
