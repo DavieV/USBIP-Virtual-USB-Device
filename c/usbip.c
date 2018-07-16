@@ -26,7 +26,9 @@
 //system headers dependent
 
 #include "usbip.h"
+
 #include "device_descriptors.h"
+#include "usbip-constants.h"
 
 const char kUsbPath[] = "/sys/devices/pci0000:00/0000:00:01.2/usb1/1-1";
 const char kBusId[] = "1-1";
