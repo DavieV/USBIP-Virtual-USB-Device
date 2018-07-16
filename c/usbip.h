@@ -127,7 +127,7 @@ typedef struct __attribute__((__packed__)) _USBIP_CMD_SUBMIT {
   int start_frame;
   int number_of_packets;
   int interval;
-  long long setup;
+  long long setup;  // Contains a USB SETUP packet.
 } USBIP_CMD_SUBMIT;
 
 /*
@@ -177,6 +177,7 @@ typedef struct __attribute__((__packed__)) _USBIP_RET_UNLINK {
   int status;
 } USBIP_RET_UNLINK;
 
+// Represents a USB SETUP packet.
 typedef struct __attribute__((__packed__)) _StandardDeviceRequest {
   byte bmRequestType;
   byte bRequest;

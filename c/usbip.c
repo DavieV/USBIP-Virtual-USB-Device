@@ -351,7 +351,7 @@ void handle_usb_control(int sockfd, USBIP_RET_SUBMIT *usb_req) {
   printf("  UC Request Type %u\n", control_req.bmRequestType);
   printf("  UC Request %u\n", control_req.bRequest);
   printf("  UC Value  %u[%u]\n", control_req.wValue1, control_req.wValue0);
-  printf("  UCIndex  %u-%u\n", control_req.wIndex1, control_req.wIndex0);
+  printf("  UC Index  %u-%u\n", control_req.wIndex1, control_req.wIndex0);
   printf("  UC Length %u\n", control_req.wLength);
 
   // Host Request
