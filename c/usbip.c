@@ -230,6 +230,14 @@ void print_usbip_cmd_submit(const USBIP_CMD_SUBMIT *command) {
   printf("usbip buffer length  %u\n", command->transfer_buffer_length);
 }
 
+void print_standard_device_request(const StandardDeviceRequest *request) {
+  printf("  UC Request Type %u\n", request->bmRequestType);
+  printf("  UC Request %u\n", request->bRequest);
+  printf("  UC Value  %u[%u]\n", request->wValue1, request->wValue0);
+  printf("  UC Index  %u-%u\n", request->wIndex1, request->wIndex0);
+  printf("  UC Length %u\n", request->wLength);
+}
+
 // Creates a new USBIP_RET_SUBMIT which is initialized using the shared values
 // from |command|.
 USBIP_RET_SUBMIT create_usbip_ret_submit(const USBIP_CMD_SUBMIT *command) {
@@ -278,20 +286,21 @@ void send_usb_req(int sockfd, USBIP_RET_SUBMIT *usb_req, char *data,
   }
 }
 
-int handle_get_descriptor(int sockfd, StandardDeviceRequest *control_req,
-                          USBIP_RET_SUBMIT *usb_req) {
-  printf("handle_get_descriptor %u [%u]\n", control_req->wValue1,
-         control_req->wValue0);
+void handle_get_descriptor(int sockfd, StandardDeviceRequest *control_request,
+                           USBIP_RET_SUBMIT *usb_request) {
+  printf("handle_get_descriptor %u [%u]\n", control_request->wValue1,
+         control_request->wValue0);
 
-  switch (control_req->wValue1) {
+  switch (control_request->wValue1) {
     case USB_DESCRIPTOR_DEVICE:
       printf("Device\n");
-      send_usb_req(sockfd, usb_req, (char *)&dev_dsc, control_req->wLength, 0);
+      send_usb_req(sockfd, usb_request, (char *)&dev_dsc,
+                   control_request->wLength, 0);
       break;
     case USB_DESCRIPTOR_CONFIGURATION:
       printf("Configuration\n");
-      send_usb_req(sockfd, usb_req, (char *)configuration, control_req->wLength,
-                   0);
+      send_usb_req(sockfd, usb_request, (char *)configuration,
+                   control_request->wLength, 0);
       break;
     case USB_DESCRIPTOR_STRING:
     {
@@ -300,34 +309,61 @@ int handle_get_descriptor(int sockfd, StandardDeviceRequest *control_req,
       // declare |str|.
       char str[255];
       memset(str, 0, 255);
-      for (int i = 0; i < (*strings[control_req->wValue0] / 2) - 1; i++) {
-        str[i] = strings[control_req->wValue0][i * 2 + 2];
+      for (int i = 0; i < (*strings[control_request->wValue0] / 2) - 1; i++) {
+        str[i] = strings[control_request->wValue0][i * 2 + 2];
       }
       printf("String (%s)\n", str);
-      send_usb_req(sockfd, usb_req, (char *)strings[control_req->wValue0],
-                   *strings[control_req->wValue0], 0);
+      send_usb_req(sockfd, usb_request,
+                   (char *)strings[control_request->wValue0],
+                   *strings[control_request->wValue0], 0);
       break;
     }
     case USB_DESCRIPTOR_DEVICE_QUALIFIER:
       printf("Qualifier\n");
-      send_usb_req(sockfd, usb_req, (char *)&dev_qua, control_req->wLength, 0);
+      send_usb_req(sockfd, usb_request, (char *)&dev_qua,
+                   control_request->wLength, 0);
     case 0x0A:
-      printf("Unknown\n");
-      send_usb_req(sockfd, usb_req, "", 0, 1);
-      break;
     default:
-      return 0;
+      printf("Unknown\n");
+      send_usb_req(sockfd, usb_request, "", 0, 1);
+      break;
   }
-
-  return 1;
 }
 
-int handle_set_configuration(int sockfd, StandardDeviceRequest *control_req,
+void handle_get_interface(int sockfd, StandardDeviceRequest *control_request,
+                          USBIP_RET_SUBMIT *usb_request) {
+  printf("handle_get_interface %u[%u]\n", control_request->wValue1,
+         control_request->wValue0);
+  send_usb_req(sockfd, usb_request, (char *)interfaces[0],
+               control_request->wLength, 0);
+}
+
+// Responds to a GET_STATUS request.
+void handle_get_status(int sockfd, StandardDeviceRequest *control_request,
+                       USBIP_RET_SUBMIT *usb_request) {
+  // TODO(daviev): This function needs to switch on |control_request->wIndex| in
+  // order to determine whether to return the status for device, interface, or
+  // endpoint.
+  printf("handle_get_status %u[%u]\n", control_request->wValue1,
+         control_request->wValue0);
+  char data[2];
+  data[0] = 0x01;
+  data[1] = 0x00;
+  send_usb_req(sockfd, usb_request, data, 2, 0);
+}
+
+void handle_set_configuration(int sockfd, StandardDeviceRequest *control_req,
                              USBIP_RET_SUBMIT *usb_req) {
   printf("handle_set_configuration %u[%u]\n", control_req->wValue1,
          control_req->wValue0);
   send_usb_req(sockfd, usb_req, "", 0, 0);
-  return 1;
+}
+
+void handle_set_interface(int sockfd, StandardDeviceRequest *control_request,
+                          USBIP_RET_SUBMIT *usb_request) {
+  printf("handle_set_interface %u[%u]\n", control_request->wValue1,
+         control_request->wValue0);
+  send_usb_req(sockfd, usb_request, "", 0, 1);
 }
 
 //http://www.usbmadesimple.co.uk/ums_4.htm
@@ -345,51 +381,32 @@ void create_standard_device_request(long long setup,
   request->wLength = ntohs(setup & 0x000000000000FFFF);
 }
 
-void handle_usb_control(int sockfd, USBIP_RET_SUBMIT *usb_req) {
-  int handled = 0;
-  StandardDeviceRequest control_req;
-  printf("%016llX\n", usb_req->setup);
-  create_standard_device_request(usb_req->setup, &control_req);
-  printf("  UC Request Type %u\n", control_req.bmRequestType);
-  printf("  UC Request %u\n", control_req.bRequest);
-  printf("  UC Value  %u[%u]\n", control_req.wValue1, control_req.wValue0);
-  printf("  UC Index  %u-%u\n", control_req.wIndex1, control_req.wIndex0);
-  printf("  UC Length %u\n", control_req.wLength);
+void handle_usb_control(int sockfd, USBIP_RET_SUBMIT *usb_request) {
+  StandardDeviceRequest control_request;
+  // Convert |usb_request->setup| into a StandardDeviceRequest.
+  create_standard_device_request(usb_request->setup, &control_request);
+  print_standard_device_request(&control_request);
 
-  // Host Request
-  // The 7th bit in |bmRequestType| indicates the data direction. If the bit is
-  // set then the the data flows from device to host.
-  if (control_req.bmRequestType == 0x80) {
-    // GET_DESCRIPTOR
-    if (control_req.bRequest == 0x06) {
-      handled = handle_get_descriptor(sockfd, &control_req, usb_req);
-    }
-    // GET_STATUS
-    if (control_req.bRequest == 0x00) {
-      char data[2];
-      data[0] = 0x01;
-      data[1] = 0x00;
-      send_usb_req(sockfd, usb_req, data, 2, 0);
-      handled = 1;
-      printf("GET_STATUS\n");
-    }
-  }
-  if (control_req.bmRequestType == 0x00) {
-    // SET_CONFIGURATION
-    if (control_req.bRequest == 0x09) {
-      handled = handle_set_configuration(sockfd, &control_req, usb_req);
-    }
-  }
-  if (control_req.bmRequestType == 0x01) {
-    // SET_INTERFACE
-    if (control_req.bRequest == 0x0B) {
-      printf("SET_INTERFACE\n");
-      send_usb_req(sockfd, usb_req, "", 0, 1);
-      handled = 1;
-    }
-  }
-  if (!handled) {
-    handle_unknown_control(sockfd, &control_req, usb_req);
+  switch (control_request.bRequest) {
+    case GET_DESCRIPTOR:
+      handle_get_descriptor(sockfd, &control_request, usb_request);
+      break;
+    case GET_INTERFACE:
+      handle_get_interface(sockfd, &control_request, usb_request);
+      break;
+    case GET_STATUS:
+      handle_get_status(sockfd, &control_request, usb_request);
+      break;
+    case SET_CONFIGURATION:
+      handle_set_configuration(sockfd, &control_request, usb_request);
+      break;
+    case SET_INTERFACE:
+      handle_set_interface(sockfd, &control_request, usb_request);
+    case GET_CONFIGURATION:
+    default:
+      printf("Unknown control request\n");
+      handle_unknown_control(sockfd, &control_request, usb_request);
+      break;
   }
 }
 
