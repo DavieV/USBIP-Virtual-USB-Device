@@ -144,27 +144,90 @@ void handle_data(int sockfd, USBIP_RET_SUBMIT *usb_req, int bl) {
   ++count;
 }
 
-void handle_unknown_control(int sockfd, StandardDeviceRequest *control_req,
-                            USBIP_RET_SUBMIT *usb_req) {
-  if (control_req->bmRequestType == 0x81) {
-    // Get Descriptor
-    if (control_req->bRequest == 0x6) {
-      // Send initial report
-      if (control_req->wValue1 == 0x22) {
-        printf("send initial report\n");
-        send_usb_req(sockfd, usb_req, (char *)mouse_report, 0x34, 0);
-      }
-    }
+// Handles a USB HID Get_Report request.
+// Refer to HID v1.11 section 7.2.1
+void handle_get_report(int sockfd, const StandardDeviceRequest *control_request,
+                       USBIP_RET_SUBMIT *usb_request) {
+  printf("handle_get_report %u[%u]\n", control_request->wValue1,
+         control_request->wValue0);
+  send_usb_req(sockfd, usb_request, (char *)mouse_report,
+               control_request->wLength, 0);
+}
+
+// Handles a USB HID Set_Report request.
+// Refer to HID v1.11 section 7.2.2
+void handle_set_report(int sockfd, const StandardDeviceRequest *control_request,
+                       USBIP_RET_SUBMIT *usb_request) {
+  printf("handle_set_report %u[%u]\n", control_request->wValue1,
+         control_request->wValue0);
+
+  // Receive the report data from the host.
+  char *buf = calloc(control_request->wLength, sizeof(*buf));
+  ssize_t received = recv(sockfd, buf, control_request->wLength, 0);
+  if (received != control_request->wLength) {
+    printf("receive error : %s\n", strerror(errno));
+    exit(1);
   }
 
-  // Host Request
-  if (control_req->bmRequestType == 0x21) {
-    // Set idle
-    if (control_req->bRequest == 0x0a) {
-      printf("Idle\n");
-      // Idle
-      send_usb_req(sockfd, usb_req, "", 0, 0);
-    }
+  char *tmp = buf;
+  for(int i = 0; i < received; ++i) {
+    printf("%u", tmp[i]);
+  }
+  printf("\n");
+  free(buf);
+
+  // Since we have only 1 defined report, we simply ignore the request.
+  send_usb_req(sockfd, usb_request, "", 0, 0);
+}
+
+// Handles a USB HID Set_Report request.
+// Refer to HID v1.11 section 7.2.4
+void handle_set_idle(int sockfd, const StandardDeviceRequest *control_request,
+                     USBIP_RET_SUBMIT *usb_request) {
+  printf("handle_set_idle %u[%u]\n", control_request->wValue1,
+         control_request->wValue0);
+  send_usb_req(sockfd, usb_request, "", 0, 0);
+}
+
+void handle_hid_request(int sockfd,
+                        const StandardDeviceRequest *control_request,
+                        USBIP_RET_SUBMIT *usb_request) {
+  switch (control_request->bRequest) {
+    case GET_REPORT:
+      handle_get_report(sockfd, control_request, usb_request);
+      break;
+    case GET_IDLE:
+      printf("GET_IDLE\n");
+      break;
+    case GET_PROTOCOL:
+      printf("GET_PROTOCOL\n");
+      break;
+    case SET_REPORT:
+      handle_set_report(sockfd, control_request, usb_request);
+      break;
+    case SET_IDLE:
+      handle_set_idle(sockfd, control_request, usb_request);
+      break;
+    case SET_PROTOCOL:
+      printf("SET_PROTOCOL\n");
+      break;
+    default:
+      printf("Unknown HID request\n");
+      break;
+  }
+}
+
+// Handles the class-specific (HID) GET_DESCRIPTOR request.
+// Refer to HID v1.11 section 7.1.1
+void handle_hid_get_descriptor(int sockfd,
+                               const StandardDeviceRequest *control_request,
+                               USBIP_RET_SUBMIT *usb_request) {
+  // If the requested report type is the same as the report type defined in the
+  // HID descriptor, then send the report descriptor.
+  if (control_request->wValue1 == 0x22) {
+    printf("send initial report\n");
+    send_usb_req(sockfd, usb_request, (char *)mouse_report,
+                 control_request->wLength, 0);
   }
 }
 

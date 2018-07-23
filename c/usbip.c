@@ -288,8 +288,10 @@ void send_usb_req(int sockfd, USBIP_RET_SUBMIT *usb_req, char *data,
 
 void handle_get_descriptor(int sockfd, StandardDeviceRequest *control_request,
                            USBIP_RET_SUBMIT *usb_request) {
-  printf("handle_get_descriptor %u [%u]\n", control_request->wValue1,
+  printf("handle_get_descriptor %u[%u]\n", control_request->wValue1,
          control_request->wValue0);
+
+  // TODO(daviev): Provide better documentation for the special class-based
 
   switch (control_request->wValue1) {
     case USB_DESCRIPTOR_DEVICE:
@@ -322,7 +324,6 @@ void handle_get_descriptor(int sockfd, StandardDeviceRequest *control_request,
       printf("Qualifier\n");
       send_usb_req(sockfd, usb_request, (char *)&dev_qua,
                    control_request->wLength, 0);
-    case 0x0A:
     default:
       printf("Unknown\n");
       send_usb_req(sockfd, usb_request, "", 0, 1);
@@ -381,11 +382,31 @@ void create_standard_device_request(long long setup,
   request->wLength = ntohs(setup & 0x000000000000FFFF);
 }
 
+int is_hid_request(const StandardDeviceRequest *control_request) {
+  // For a HID request, |control_request->bmRequestType| should always have bit
+  // 5 and bit 0 set.
+  // 00100001d = 0x21
+  return (control_request->bmRequestType & 0x21) == 0x21;
+}
+
 void handle_usb_control(int sockfd, USBIP_RET_SUBMIT *usb_request) {
   StandardDeviceRequest control_request;
   // Convert |usb_request->setup| into a StandardDeviceRequest.
   create_standard_device_request(usb_request->setup, &control_request);
   print_standard_device_request(&control_request);
+
+  if (is_hid_request(&control_request)) {
+    handle_hid_request(sockfd, &control_request, usb_request);
+    return;
+  }
+
+  // Special HID GET_DESCRIPTOR request.
+  if (control_request.bmRequestType == 0x81 &&
+      control_request.bRequest == GET_DESCRIPTOR) {
+    printf("Special Request\n");
+    handle_hid_get_descriptor(sockfd, &control_request, usb_request);
+    return;
+  }
 
   switch (control_request.bRequest) {
     case GET_DESCRIPTOR:
@@ -405,7 +426,6 @@ void handle_usb_control(int sockfd, USBIP_RET_SUBMIT *usb_request) {
     case GET_CONFIGURATION:
     default:
       printf("Unknown control request\n");
-      handle_unknown_control(sockfd, &control_request, usb_request);
       break;
   }
 }

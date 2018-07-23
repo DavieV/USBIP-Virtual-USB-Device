@@ -12,17 +12,25 @@
 // USB "bRequest" Constants.
 // These represent the possible values contained within a USB SETUP packet which
 // specify the type of request.
-#define GET_STATUS 0
-#define CLEAR_FEATURE 1
-#define SET_FEATURE 3
-#define SET_ADDRESS 5
-#define GET_DESCRIPTOR 6
-#define SET_DESCRIPTOR 7
-#define GET_CONFIGURATION 8
-#define SET_CONFIGURATION 9
-#define GET_INTERFACE 10
-#define SET_INTERFACE 11
-#define SET_FRAME 12
+#define GET_STATUS 0x00
+#define CLEAR_FEATURE 0x01
+#define SET_FEATURE 0x03
+#define SET_ADDRESS 0x05
+#define GET_DESCRIPTOR 0x06
+#define SET_DESCRIPTOR 0x07
+#define GET_CONFIGURATION 0x08
+#define SET_CONFIGURATION 0x09
+#define GET_INTERFACE 0x0A
+#define SET_INTERFACE 0x0B
+#define SET_FRAME 0x0C
+
+// Special "bRequest" values for HID requests.
+#define GET_REPORT 0x01
+#define GET_IDLE 0x02
+#define GET_PROTOCOL 0x03
+#define SET_REPORT 0x09
+#define SET_IDLE 0x0A
+#define SET_PROTOCOL 0x0B
 
 // OP Commands.
 #define OP_REQ_DEVLIST_CMD 0x8005

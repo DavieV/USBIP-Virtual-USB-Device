@@ -86,6 +86,7 @@ typedef struct __attribute__((__packed__)) _CONFIG_GEN {
 
 // Human Input Device (HID) Descriptor
 // For more details refer to http://www.usb.org/developers/hidpage/HID1_11.pdf
+// Section 6.2.1 HID Descriptor
 typedef struct __attribute__((__packed__)) _USB_HID_DESCRIPTOR {
   byte bLength;
   byte bDescriptorType;
